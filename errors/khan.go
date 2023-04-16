@@ -2,9 +2,6 @@ package errors
 
 import simpler "github.com/StevenACoffman/simplerr/errors"
 
-// this file is for compatibility with Webapp Khan errors.
-// Wrap works like the Wrap there.
-
 type errorKind string
 
 // Error is a function that makes errorKind implement the error interface. This
@@ -93,6 +90,8 @@ const (
 // If there is an error in wrapping -- the input is not a khanError,
 // a non-string key is specified -- then the wrapped error is actually
 // an error.Internal() that indicates the problem with wrapping.
+// .
+// Wrap here is NOT how github.com/pkg/errors Wrap
 func Wrap(err error, args ...interface{}) error {
 	if err == nil {
 		return nil
@@ -147,7 +146,8 @@ func getErrorKind(err error) (errorKind, bool) {
 	return UnspecifiedKind, false
 }
 
-// NotFound creates an error of kind NotFoundKind.  args can be
+// NotFound creates an error of kind NotFoundKind.
+// args can be
 // (1) an error to wrap
 // (2) a string to use as the error message
 // (3) an errors.Fields{} object of key/value pairs to associate with the error
@@ -255,3 +255,10 @@ func newError(kind errorKind, args ...interface{}) error {
 //
 //	return nil
 //}
+
+func GetFields(err error) Fields {
+	return Fields(simpler.GetFields(err))
+}
+
+// Fields is re-exported here to avoid leaking direct import implementation details
+type Fields simpler.Fields
