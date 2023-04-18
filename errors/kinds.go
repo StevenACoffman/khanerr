@@ -170,7 +170,7 @@ func (e errorKind) IsValidKind() bool {
 }
 
 // GetKind returns the non-exported type, which can be annoying to use
-// However, in tests, it's handy.
+// However, in tests, it can be handy.
 func GetKind(err error) errorKind {
 	var khanerr *khanError
 	if As(err, &khanerr) {
@@ -178,7 +178,9 @@ func GetKind(err error) errorKind {
 	}
 	var kind errorKind
 	if As(err, &kind) {
-		return kind
+		if kind.IsValidKind() {
+			return kind
+		}
 	}
 	return UnspecifiedKind
 }
@@ -192,9 +194,9 @@ func getKind(e *khanError) errorKind {
 	if e.kind.IsValidKind() {
 		return e.kind
 	}
-	var khanerr *khanError
-	if As(e, &khanerr) {
-		return getKind(khanerr)
+	var khanErr *khanError
+	if As(e.wrappedErr, &khanErr) {
+		return getKind(khanErr)
 	}
 
 	return UnspecifiedKind
