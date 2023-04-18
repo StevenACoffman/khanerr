@@ -6,7 +6,8 @@
 // `khanerr` provides errors with key value Fields, StackTraces, and Sentinel errors
 // that correspond to the gRPC status codes.
 //
-// You can also use this package as a drop in replacement for the `Unwrap`, `As`, and `Is` functions from the errors packages.
+// You can also use this package as a drop in replacement for the `Unwrap`, `As`, and `Is` functions
+// from the errors packages.
 //
 // This package is influenced
 // by https:// middlemost.com/failure-is-your-domain/.

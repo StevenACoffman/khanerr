@@ -1,242 +1,250 @@
 package errors
 
-import simpler "github.com/StevenACoffman/simplerr/errors"
+import (
+	"bytes"
+	"fmt"
+	"sort"
 
-type errorKind string
+	simpler "github.com/StevenACoffman/simplerr/errors"
+)
 
-// Error is a function that makes errorKind implement the error interface. This
-// lets us use error.Is with kinds. We don't actually use the output of this
-// function for anything.
-func (e errorKind) Error() string {
-	return string(e)
+// khanError is our error implementation. `source` is a string that
+// uniquely identifies the error source, such as "package.function". `kind`
+// is an error category. `message` is an error message that will appear in
+// the logs. `wrappedErr` is an optional wrapped error. `origin` is a
+// string in the format "<filename>:<linenumber>". `extra` is an optional
+// collection of key value pairs to log when logging the error.
+type khanError struct {
+	message    string
+	kind       errorKind
+	wrappedErr error
+	extra      Fields
 }
 
-// String presents the value of the string, like "Not Found"
-// The fmt package (and many others) look for this to print values.
-func (e errorKind) String() string {
-	return string(e)
+func (e *khanError) wrappedErrors() []Fields {
+	if e == nil || e.wrappedErr == nil {
+		return []Fields{}
+	}
+	// inner, ok := e.wrappedErr.(*khanError)
+	innerFields := simpler.GetFields(e.wrappedErr)
+	if len(innerFields) != 0 {
+		return []Fields{Fields(innerFields)}
+	}
+	// unlikely to get past this but should work fine regardless
+	var inner *khanError
+	ok := As(e.wrappedErr, &inner)
+	var wrapped []Fields
+	if !ok {
+		return append(wrapped, Fields{MessageKey: e.wrappedErr.Error()})
+	}
+	wrapped = append(wrapped, Fields{
+		MessageKey: inner.message,
+		KindKey:    string(getKind(inner)),
+	})
+	return append(wrapped, inner.wrappedErrors()...)
+}
+
+// Error returns a short error message. It constitutes the "error" interface.
+// We expose all metadata (except some special empty fields) about the error
+// here to ensure that when errors are sent to the requestlogs that all the
+// data is captured. The error data is also exposed in a structured form in
+// stackdriver logs using LogFields.
+func (e *khanError) Error() string {
+	if e == nil {
+		return ""
+	}
+
+	var buf bytes.Buffer
+
+	// TODO(csilvers): do we want to do something special if the
+	// wrapped error is a sentinel?  Like maybe show our error text
+	// above the sentinel, followed by a special "Wraps sentinel:"
+	// line.  (We can tell if we're a sentinel based on `source`
+	// having `"init"`.)
+	// TODO(csilvers): similarly for non-khan errors: we may want to
+	// show the first khan-error instead, that wraps the non-khan error.
+	if e.wrappedErr != nil {
+		buf.WriteString(e.wrappedErr.Error())
+		buf.WriteString("\nWrapped by: ")
+	}
+
+	_, _ = fmt.Fprintf(&buf, "%s", string(getKind(e)))
+	if e.message != "" {
+		_, _ = fmt.Fprintf(&buf, " %s", e.message)
+	}
+	if e.extra != nil {
+		keys := make([]string, len(e.extra))
+		i := 0
+		for k := range e.extra {
+			keys[i] = k
+			i++
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fieldValue := StringifyField(e.extra[k])
+			// Ignore empty fields for special keys. These keys are set by the
+			// graphql error handler with empty values to ensure that the
+			// fields are present in the log schema and thus avoid log export
+			// problems. But if they are empty we don't need to see them in the
+			// message.
+			if fieldValue == "" && (k == "handledGraphQLPanic" ||
+				k == "panicErr.Kind" ||
+				k == "panicErr.Message" ||
+				k == "panicErr.Source" ||
+				k == "panicValue") {
+				continue
+			}
+			_, _ = fmt.Fprintf(&buf, ", %s = %s", k, fieldValue)
+		}
+	}
+	return buf.String()
+}
+
+// Unwrap returns the wrapped error, if any. This function allows use of
+// errors.Unwrap, errors.Is, and errors.As.
+func (e *khanError) Unwrap() error {
+	return e.wrappedErr
+}
+
+// Is implements the test that errors.Is uses to decide if two errors are
+// "equal". errors.Is takes care of comparing the error and all wrapped
+// errors using regular equality checks. So we only need to test for
+// special cases here. The special case we support is matching with kinds.
+// An error is "equal" to it's kind. This let's us use errors.Is find out
+// which kind a khan error is.
+func (e *khanError) Is(target error) bool {
+	return e.kind == target
 }
 
 const (
-	// NotFoundKind means that some requested resource wasn't found. If the
-	// resource couldn't be retrieved due to access control use
-	// UnauthorizedKind instead. If the resource couldn't be found because
-	// the input was invalid use InvalidInputKind instead.
-	NotFoundKind errorKind = "not found"
-
-	// InvalidInputKind means that there was a problem with the provided input.
-	// This kind indicates inputs that are problematic regardless of the state
-	// of the system. Use NotAllowedKind when the input is valid but
-	// conflicts with the state of the system.
-	InvalidInputKind errorKind = "invalid input error"
-
-	// NotAllowedKind means that there was a problem due to the state of
-	// the system not matching the requested operation or input. For
-	// example, trying to create a username that is valid, but is already
-	// taken by another user. Use InvalidInputKind when the input isn't
-	// valid regardless of the state of the system. Use NotFoundKind when
-	// the failure is due to not being able to find a resource.
-	NotAllowedKind errorKind = "not allowed"
-
-	// UnauthorizedKind means that there was an access control problem.
-	UnauthorizedKind errorKind = "unauthorized error"
-
-	// InternalKind means that the function failed for a reason unrelated
-	// to its input or problems working with a remote system. Use this kind
-	// when other error kinds aren't appropriate.
-	InternalKind errorKind = "internal error"
-
-	// NotImplementedKind means that the function isn't implemented.
-	NotImplementedKind errorKind = "not implemented error"
-
-	// GraphqlResponseKind means that the graphql server returned an
-	// error code as part of the graphql response.  This kind of error
-	// is only ever returned by gqlclient calls (e.g. Query or
-	// ServiceAdminMutate).  It is set when the graphql call
-	// successfully executes, but the graphql response struct
-	// indicates the graphql request could not be executed due to an
-	// error.  (e.g. mutation.MyMutation.Error.Code == "UNAUTHORIZED")
-	GraphqlResponseKind errorKind = "graphql error response"
-
-	// TransientKhanServiceKind means that there was a problem when contacting
-	// another Khan service that might be resolvable by retrying.
-	TransientKhanServiceKind errorKind = "transient khan service error"
-
-	// KhanServiceKind means that there was a non-transient problem when
-	// contacting another Khan service.
-	KhanServiceKind errorKind = "khan service error"
-
-	// TransientServiceKind means that there was a problem when making a
-	// request to a non-Khan service, e.g. datastore that might be
-	// resolvable by retrying.
-	TransientServiceKind errorKind = "transient service error"
-
-	// ServiceKind means that there was a non-transient problem when making a
-	// request to a non-Khan service, e.g. datastore.
-	ServiceKind errorKind = "service error"
-
-	// UnspecifiedKind means that no error kind was specified. Note that there
-	// isn't a constructor for this kind of error.
-	UnspecifiedKind errorKind = "unspecified error"
+	MessageKey        = "Message"
+	KindKey           = "Kind"
+	BadArgsKey        = "badargs"
+	InvalidErrArgsKey = "Invalid error arguments"
 )
+
+func newError(kind errorKind, args ...any) error {
+	e := &khanError{kind: kind}
+	badArgs := make([]any, 0)
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case error:
+			e.wrappedErr = v
+		case string:
+			e.message = v
+		case Fields:
+			e.extra = v
+		case map[string]any:
+			e.extra = v
+		default:
+			badArgs = append(badArgs, v)
+		}
+	}
+	if len(badArgs) > 0 {
+		e.message = "Invalid error constructor argument(s): " + e.message
+		details := make([]string, len(badArgs))
+		for i, arg := range badArgs {
+			details[i] = fmt.Sprintf("%#v", arg)
+		}
+		if e.extra == nil {
+			e.extra = Fields{}
+		}
+		e.extra[InvalidErrArgsKey] = details
+	}
+
+	fields := Fields{
+		KindKey: string(getKind(e)),
+	}
+	for _, f := range e.wrappedErrors() {
+		for s, a := range f {
+			if _, ok := fields[s]; !ok && s != "Source" && s != "Origin" {
+				fields[s] = a
+			}
+		}
+	}
+	if e.extra != nil {
+		for k, v := range e.extra {
+			fields[k] = v
+		}
+	}
+
+	if e.message != "" {
+		if len(fields) == 0 {
+			fields = Fields{MessageKey: e.message}
+		} else {
+			fields[MessageKey] = e.message
+		}
+	}
+	// if no other wrapped error, use kind
+	if e.wrappedErr == nil || e.wrappedErr == kind {
+		return simpler.WrapWithFieldsAndDepth(kind, simpler.Fields(fields), 2)
+	}
+	// we double wrap to ensure errors.Is true for both kind and original
+	tmpErr := simpler.With(e.wrappedErr, kind)
+	return simpler.WrapWithFieldsAndDepth(tmpErr, simpler.Fields(fields), 2)
+}
+
+// Fail if Wrap() has the wrong args.  All the errors here are
+// programming errors, so we fail in tests (and on dev) but just note
+// the error in prod.
+func _fail(args ...any) error {
+	return Internal(args...)
+}
 
 // Wrap takes a khanError as input and some new field key/value pairs,
 // and returns a new error that has the same "kind" as the existing
 // error, plus the specified key/value pairs.  For convenience, rather
 // than using errors.Fields{} to specify the key/value pairs, they
-// are specified as alternating string/interface{} objects.
+// are specified as alternating string/any objects.
 // Also for convenience, if nil is passed in then nil is returned.
 //
 // If there is an error in wrapping -- the input is not a khanError,
 // a non-string key is specified -- then the wrapped error is actually
 // an error.Internal() that indicates the problem with wrapping.
 // .
-// Wrap here is NOT how github.com/pkg/errors Wrap
-func Wrap(err error, args ...interface{}) error {
+// Wrap here is NOT github.com/pkg/errors Wrap compatible
+func Wrap(err error, args ...any) error {
 	if err == nil {
 		return nil
 	}
 
 	if len(args)%2 != 0 {
-		return newError(
-			InternalKind,
-			err,
-			simpler.Fields{
-				"fields":  args,
-				"message": "Passed an odd number of field-args to errors.Wrap()",
-			},
-		)
+		return _fail("Passed an odd number of field-args to errors.Wrap()",
+			err, Fields{BadArgsKey: args})
 	}
 
-	fields := simpler.Fields{}
+	fields := Fields{}
 	for i := 0; i < len(args); i += 2 {
 		key, ok := args[i].(string)
 		if !ok {
-			return newError(
-				InternalKind,
-				err,
-				simpler.Fields{"key": args[i], "message": "Passed a non-string key-field to errors.Wrap()"},
-			)
+			return _fail("Passed a non-string key-field to errors.Wrap()",
+				err, Fields{"key": args[i]})
 		}
 		fields[key] = args[i+1]
 	}
-
-	khanKind, kindOfOk := getErrorKind(err)
-	if kindOfOk { // root is errorKind
-		if khanKind == UnspecifiedKind {
-			// This probably can't happen, but just in case...
-			return newError(InternalKind, args...)
-		}
-		return newError(khanKind, err, fields)
-	}
-	// "Internal" is the best default, but not always right.
-	// e.g. for client.GCS() errors, "Service" would be better.
-	// The solution is to change our GCS wrapper to return khanErrors,
-	// like we do for our Datastore wrapper.
-	return newError(InternalKind, err, fields)
-}
-
-func getErrorKind(err error) (errorKind, bool) {
-	for tmpErr := err; tmpErr != nil; tmpErr = simpler.UnwrapOnce(tmpErr) {
-		var khanKind errorKind
-		if simpler.As(err, &khanKind) {
-			return khanKind, true
-		}
-	}
-	return UnspecifiedKind, false
-}
-
-// NotFound creates an error of kind NotFoundKind.
-// args can be
-// (1) an error to wrap
-// (2) a string to use as the error message
-// (3) an errors.Fields{} object of key/value pairs to associate with the error
-// (4) an errors.Source("source-location") to override the default source-loc
-// If you specify any of these multiple times, only the last one wins.
-func NotFound(args ...interface{}) error {
-	return Wrap(NotFoundKind, args...)
-}
-
-// InvalidInput creates an error of kind InvalidKind.
-func InvalidInput(args ...interface{}) error {
-	return Wrap(InvalidInputKind, args...)
-}
-
-// NotAllowed creates an error of kind NotAllowedKind.
-func NotAllowed(args ...interface{}) error {
-	return Wrap(NotAllowedKind, args...)
-}
-
-// Unauthorized creates an error of kind UnauthorizedKind.
-func Unauthorized(args ...interface{}) error {
-	return Wrap(UnauthorizedKind, args...)
-}
-
-// Internal creates an error of kind InternalKind.
-func Internal(args ...interface{}) error {
-	return Wrap(InternalKind, args...)
-}
-
-// GraphqlResponse creates an error of kind GraphqlResponseKind.
-func GraphqlResponse(args ...interface{}) error {
-	return Wrap(GraphqlResponseKind, args...)
-}
-
-// NotImplemented creates an error of kind NotImplementedKind.
-func NotImplemented(args ...interface{}) error {
-	return Wrap(NotImplementedKind, args...)
-}
-
-// TransientKhanService creates an error of kind TransientKhanServiceKind.
-func TransientKhanService(args ...interface{}) error {
-	return Wrap(TransientKhanServiceKind, args...)
-}
-
-// KhanService creates an error of kind KhanServiceKind.
-func KhanService(args ...interface{}) error {
-	return Wrap(KhanServiceKind, args...)
-}
-
-// Service creates an error of kind ServiceKind.
-func Service(args ...interface{}) error {
-	return Wrap(ServiceKind, args...)
-}
-
-// TransientService creates an error of kind TransientServiceKind.
-func TransientService(args ...interface{}) error {
-	return Wrap(TransientServiceKind, args...)
-}
-
-func newError(kind errorKind, args ...interface{}) error {
-	var message string
-	var cause error
-	var fields simpler.Fields
-	for _, arg := range args {
-		switch v := arg.(type) {
-		case error:
-			cause = v
-		case string:
-			message = v
-		case simpler.Fields:
-			fields = v
-		case map[string]interface{}:
-			fields = v
+	var khanKind errorKind
+	if As(err, &khanKind) {
+		if khanKind.IsValidKind() {
+			return newError(khanKind, fields)
 		}
 	}
 
-	if message != "" {
-		if fields == nil {
-			fields = simpler.Fields{"message": message}
-		} else {
-			fields["message"] = message
-		}
+	// khanErr, ok := err.(*khanError)
+	var khanErr *khanError
+	ok := As(err, &khanErr)
+	if !ok {
+		// "Internal" is the best default, but not always right.
+		// e.g. for client.GCS() errors, "Service" would be better.
+		// The solution is to change our GCS wrapper to return khanErrors,
+		// like we do for our Datastore wrapper.
+		return Internal(err, fields)
 	}
-	if cause != nil && cause != kind {
-		tmpErr := simpler.With(cause, kind)
-		return simpler.WrapWithFieldsAndDepth(tmpErr, fields, 2)
+	errKind := getKind(khanErr)
+	if errKind == UnspecifiedKind {
+		// This probably can't happen, but just in case...
+		return _fail("Cannot determine kind of error-to-wrap", err)
 	}
-
-	return simpler.WrapWithFieldsAndDepth(kind, fields, 2)
+	return newError(errKind, khanErr, fields)
 }
 
 //
@@ -258,6 +266,30 @@ func newError(kind errorKind, args ...interface{}) error {
 
 func GetFields(err error) Fields {
 	return Fields(simpler.GetFields(err))
+}
+
+// IsKhanError returns true if the error is a khan error. Note we don't
+// check wrapped errors - this is a check of the outer error only. This
+// check isn't like errors.As which is used to get access to error details
+// for a particular type of errors. Instead use this function to see if the
+// outer error is a khan error so that you can tell whether you might want
+// to wrap the error in a khan error before logging.
+func IsKhanError(err error) bool {
+	var kind errorKind
+	if As(err, &kind) {
+		return kind.IsValidKind()
+	}
+	return false
+}
+
+// StringifyField turns a field value into a string for logging.
+func StringifyField(value any) string {
+	switch value.(type) {
+	case []string:
+		return fmt.Sprintf("%q", value)
+	default:
+		return fmt.Sprintf("%v", value)
+	}
 }
 
 // Fields is re-exported here to avoid leaking direct import implementation details

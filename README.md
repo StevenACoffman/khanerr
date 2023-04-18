@@ -1,15 +1,16 @@
 # khanerr - gRPC status code Sentinel Errors with Fields and StackTraces
 
+Khan uses an internal error package, which is a featureful everything-and-the-kitchen-sink error.
+
 Package errors is a reimplementation of Khan's error package, but here, it is based on
-the minimalist `github.com/StevenACoffman/simplerr`.
+the minimalist `github.com/StevenACoffman/simplerr` but also has nicer stacktraces, and flattens Fields.
 
 `khanerr` provides errors with key value Fields, StackTraces, and Sentinel errors
 that correspond to the gRPC status codes.
 
-You can also use this package as a drop in replacement for the `Unwrap`, `As`, and `Is` functions from the errors packages.
+You can also use this package as a drop in replacement for the `Unwrap`, `As`, and `Is` functions from the stdlib `errors` packages.
 
-This package is influenced
-by https://middlemost.com/failure-is-your-domain/.  
+This package is influenced by https://middlemost.com/failure-is-your-domain/.  
 
 ### Sentinel Error values
 
