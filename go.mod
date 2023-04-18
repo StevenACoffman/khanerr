@@ -3,7 +3,7 @@ module github.com/StevenACoffman/khanerr
 go 1.20
 
 require (
-	github.com/StevenACoffman/simplerr v0.0.0-20230417190343-d799b0b1399f
+	github.com/StevenACoffman/simplerr v0.0.0-20230419164504-91cf1c91bd28
 	github.com/stretchr/testify v1.8.2
 )
 

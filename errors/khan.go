@@ -213,7 +213,7 @@ func Wrap(err error, args ...any) error {
 			err, Fields{BadArgsKey: args})
 	}
 
-	fields := Fields{}
+	fields := GetFields(err)
 	for i := 0; i < len(args); i += 2 {
 		key, ok := args[i].(string)
 		if !ok {
@@ -222,16 +222,21 @@ func Wrap(err error, args ...any) error {
 		}
 		fields[key] = args[i+1]
 	}
-	var khanKind errorKind
+	// if err is kind without any wrapping
+	khanKind, ok := err.(errorKind)
+	if ok {
+		return newError(khanKind, fields)
+	}
+	// if err is wrapped kind, it's a khan error
 	if As(err, &khanKind) {
 		if khanKind.IsValidKind() {
-			return newError(khanKind, fields)
+			return newError(khanKind, err, fields)
 		}
 	}
 
 	// khanErr, ok := err.(*khanError)
 	var khanErr *khanError
-	ok := As(err, &khanErr)
+	ok = As(err, &khanErr)
 	if !ok {
 		// "Internal" is the best default, but not always right.
 		// e.g. for client.GCS() errors, "Service" would be better.

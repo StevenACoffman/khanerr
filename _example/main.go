@@ -17,22 +17,21 @@ func (e ErrMyError) Error() string {
 
 func foo() error {
 	// Attach stack trace to the sentinel error.
-	return errors.Internal(
+	return errors.Internal("root",
 		ErrMyError{Msg: "Something went wrong"},
-		errors.Fields{"internal": "inside"},
 	)
 }
 
 func bar() error {
-	withErr := errors.Unauthorized(foo(), errors.Fields{"bar": true})
-	return errors.NotFound(withErr, errors.Fields{"found": false})
+	root := foo()
+	return errors.Wrap(root, "bar", true)
+}
+
+func baz() error {
+	e := bar()
+	return errors.Wrap(e, "kind", errors.InternalKind)
 }
 
 func main() {
-	fmt.Printf("%+v\n", errors.Internal(errors.Fields{"bar": true}))
-	// myErr := bar()
-	// fmt.Println("Doing something")
-	// err := errors.TransientKhanService(myErr)
-	// fmt.Println("----")
-	// fmt.Printf("%+v\n", err)
+	fmt.Printf("%+v\n", baz())
 }

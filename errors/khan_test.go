@@ -14,32 +14,32 @@ type errorSuite struct{ suite.Suite }
 func (es *errorSuite) TestSimpleError() {
 	e := errors.Internal("Testing one two")
 	es.Require().Equal(
-		"fields:[Kind:internal error,Message:Testing one two],internal error", e.Error())
+		"Fields: [Kind:internal error,Message:Testing one two], Cause: internal error", e.Error())
 }
 
 func (es *errorSuite) TestExtra() {
 	e := errors.Internal("Testing",
 		errors.Fields{"kaid": "123", "tags": []string{"one", "two"}, "empty": "", "panicValue": ""})
 	es.Require().Equal(
-		"fields:[Kind:internal error,Message:Testing,empty:,kaid:123,panicValue:,tags:[one two]],internal error",
+		"Fields: [Kind:internal error,Message:Testing,empty:,kaid:123,panicValue:,tags:[one two]], Cause: internal error",
 		e.Error())
 	outer := errors.Internal(e)
 	es.Require().Equal(
-		"fields:[Kind:internal error,Message:Testing,empty:,kaid:123,panicValue:,tags:[one two]],internal error: fields:[Kind:internal error,Message:Testing,empty:,kaid:123,panicValue:,tags:[one two]],internal error",
+		"Fields: [Kind:internal error,Message:Testing,empty:,kaid:123,panicValue:,tags:[one two]], Cause: internal error: Fields: [Kind:internal error,Message:Testing,empty:,kaid:123,panicValue:,tags:[one two]], Cause: internal error",
 		outer.Error())
 }
 
 func (es *errorSuite) TestEmpty() {
 	e := errors.Internal()
 	es.Require().Equal(
-		"fields:[Kind:internal error],internal error", e.Error())
+		"Fields: [Kind:internal error], Cause: internal error", e.Error())
 }
 
 func (es *errorSuite) TestWrappedError() {
 	innerError := fmt.Errorf("This is not OK")
 	e := errors.Internal(innerError)
 	es.Require().Equal(
-		"fields:[Kind:internal error,Message:This is not OK],internal error: This is not OK",
+		"Fields: [Kind:internal error,Message:This is not OK], Cause: internal error: This is not OK",
 		e.Error())
 	// non-kind, non-khan errors are wrapped twice
 	// inner wrapper front is kind, back is non-khan, non-kind root
@@ -144,22 +144,22 @@ func (es *errorSuite) TestWrap() {
 
 	e2 := errors.Wrap(e, "three", 4)
 	es.Require().Equal(
-		"fields:[Kind:not found,three:4],not found",
+		"Fields: [Kind:not found,Message:Testing one two,three:4], Cause: not found: Fields: [Kind:not found,Message:Testing one two,three:not yet], Cause: not found",
 		e2.Error())
 
 	e2 = errors.Wrap(fmt.Errorf("sentinal"), "three", 4)
 	es.Require().Equal(
-		"fields:[Kind:internal error,Message:sentinal,three:4],internal error: sentinal",
+		"Fields: [Kind:internal error,Message:sentinal,three:4], Cause: internal error: sentinal",
 		e2.Error())
 
 	e2 = errors.Wrap(e, "three", 4, "five")
 	es.Require().Equal(
-		"fields:[Kind:internal error,Message:Passed an odd number of field-args to errors.Wrap(),badargs:[three 4 five],three:not yet],internal error: fields:[Kind:not found,Message:Testing one two,three:not yet],not found",
+		"Fields: [Kind:internal error,Message:Passed an odd number of field-args to errors.Wrap(),badargs:[three 4 five],three:not yet], Cause: internal error: Fields: [Kind:not found,Message:Testing one two,three:not yet], Cause: not found",
 		e2.Error())
 
 	e2 = errors.Wrap(e, "three", 4, 5, 6)
 	es.Require().Equal(
-		"fields:[Kind:internal error,Message:Passed a non-string key-field to errors.Wrap(),key:5,three:not yet],internal error: fields:[Kind:not found,Message:Testing one two,three:not yet],not found",
+		"Fields: [Kind:internal error,Message:Passed a non-string key-field to errors.Wrap(),key:5,three:not yet], Cause: internal error: Fields: [Kind:not found,Message:Testing one two,three:not yet], Cause: not found",
 		e2.Error())
 
 	e2 = errors.Wrap(nil, "three", 4)
@@ -171,7 +171,7 @@ func (es *errorSuite) TestWrapInDev() {
 	es.Require().Equal("not yet", errors.GetFields(e)["three"])
 	e2 := errors.Wrap(e, "three", 4)
 	es.Require().Equal(
-		"fields:[Kind:not found,three:4],not found",
+		"Fields: [Kind:not found,Message:Testing one two,three:4], Cause: not found: Fields: [Kind:not found,Message:Testing one two,three:not yet], Cause: not found",
 		e2.Error())
 
 	e2 = errors.Wrap(nil, "three", 4)

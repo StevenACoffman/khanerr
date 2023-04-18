@@ -1,2 +1,8 @@
-github.com/StevenACoffman/simplerr v0.0.0-20230417190343-d799b0b1399f h1:aP3ZzRyHOM2mllVFGKxrilkVfn4RYK+ELGv6+OvOwKk=
-github.com/StevenACoffman/simplerr v0.0.0-20230417190343-d799b0b1399f/go.mod h1:CfEVFWoPttAw2uhsaqEN3MeqQ3IrZU+4EJNOAbyjuCM=
+github.com/StevenACoffman/simplerr v0.0.0-20230419160333-88d56633834f h1:po9UNy9K9SIubMLlLzAqZZ2tGdvQMTVbECXNzkwVL7k=
+github.com/StevenACoffman/simplerr v0.0.0-20230419160333-88d56633834f/go.mod h1:CfEVFWoPttAw2uhsaqEN3MeqQ3IrZU+4EJNOAbyjuCM=
+github.com/StevenACoffman/simplerr v0.0.0-20230419164504-91cf1c91bd28 h1:TdKtv6S/N8SQBBGlT9VWf3urw4O616oNyOpv4pq/0Tk=
+github.com/StevenACoffman/simplerr v0.0.0-20230419164504-91cf1c91bd28/go.mod h1:CfEVFWoPttAw2uhsaqEN3MeqQ3IrZU+4EJNOAbyjuCM=
+github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+github.com/stretchr/testify v1.8.2 h1:+h33VjcLVPDHtOdpUCuF+7gSuG3yGIftsP1YvFihtJ8=
+gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
